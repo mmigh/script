@@ -1,533 +1,411 @@
 -- ==========================================
--- TỐI ƯU HÓA & SỬA LỖI TWEENCONTROLLER (FULL)
--- KẾT HỢP THU THẬP TRÁI CÂY + ESP
+-- DEBUG MODE - TEST TWEEN & ESP
+-- TẠO TRÁI CÂY GIẢ ĐỂ TEST NHANH
 -- ==========================================
 
--- Biến toàn cục & Dịch vụ
-local Services = setmetatable({}, {
-    __index = function(_, Index)
-        return game:GetService(Index)
-    end
-})
-
-local Remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-local ScriptStorage = { Backpack = {} }
-local SeaIndex = game.PlaceId == 7449423635 and 3 or (game.PlaceId == 4442272183 and 2 or 1)
-local plr = game.Players.LocalPlayer
-
--- ==========================================
--- CẤU HÌNH ESP
--- ==========================================
-local ESP_CONFIG = {
-    Enabled = true,           -- Bật/Tắt ESP
-    Color = Color3.fromRGB(255, 200, 0), -- Màu chữ (Vàng)
-    DistanceColor = Color3.fromRGB(255, 255, 255), -- Màu khoảng cách
-    ShowDistance = true,      -- Hiển thị khoảng cách
-    TextSize = 14,            -- Kích thước chữ
-    Font = Enum.Font.Code,    -- Font chữ
-    UpdateInterval = 0.5,     -- Thời gian cập nhật (giây)
+local DebugMode = {
+    Enabled = false,           -- Bật/Tắt Debug Mode
+    SpawnRadius = 10000,          -- Bán kính spawn trái cây xung quanh player
+    FruitCount = 5,            -- Số lượng trái cây giả tạo ra
+    AutoSpawn = true,          -- Tự động spawn lại khi thu thập hết
+    SpawnInterval = 3,         -- Thời gian giữa các lần spawn (giây)
+    ShowDebugLogs = true,      -- Hiển thị log debug
+    FruitNames = {             -- Danh sách tên trái cây giả
+        "Flame Fruit",
+        "Ice Fruit",
+        "Light Fruit",
+        "Dark Fruit",
+        "Dragon Fruit",
+        "Venom Fruit",
+        "Kitsune Fruit",
+        "Dough Fruit",
+        "Leopard Fruit",
+        "Shadow Fruit",
+    }
 }
 
-local DevilFruitESP = ESP_CONFIG.Enabled
-local Number = tostring(math.random(1000, 9999)) -- ID duy nhất cho ESP
-
 -- ==========================================
--- HÀM TIỆN ÍCH
+-- TẠO TRÁI CÂY GIẢ
 -- ==========================================
 
--- Hàm làm tròn số
-local function G5(Number)
-    return math.round(Number * 10) / 10
-end
-
--- Hàm chuyển đổi linh hoạt CFrame và Vector3
-local function ConvertTo(Type, Instance)
-    if typeof(Instance) == "Vector3" then
-        return Type.new(Instance.X, Instance.Y, Instance.Z)
-    elseif typeof(Instance) == "CFrame" then
-        return Type == Vector3 and Instance.Position or Instance
-    end
-    return Instance
-end
-
--- Hàm tính khoảng cách linh hoạt
-function CaculateDistance(Origin, Destination)
-    if not Origin then return 0 end
+local function getRandomPosition()
+    local char = game.Players.LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return Vector3.new(0, 10, 0) end
     
-    if not Destination then
-        Destination = Origin
-        local char = plr.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            Origin = char.HumanoidRootPart.Position
-        else
-            return 0
-        end
-    end
-
-    local PosA = typeof(Origin) == "CFrame" and Origin.Position or Origin
-    local PosB = typeof(Destination) == "CFrame" and Destination.Position or Destination
-
-    return (PosA - PosB).Magnitude
-end
-
--- ==========================================
--- TWEEN CONTROLLER (Tối ưu + Fix lỗi)
--- ==========================================
-
-local TweenInstance = nil
-local TweenInstance2 = nil
-local TweenDebounce = false
-local TweenTargetPosition = nil
-local LastestTeleportToHomePoint = 0
-
-local Entries = {}
-local Portals = {} 
-
--- Khởi tạo vị trí Home Point
-if game.ReplicatedStorage:FindFirstChild("NPCs") then
-    for _, NPC in ipairs(game.ReplicatedStorage.NPCs:GetChildren()) do
-        if NPC.Name == "Set Home Point" and NPC:IsA("Model") then
-            table.insert(Entries, NPC:GetPivot())
-        end
-    end
-end
-
-TweenController = {}
-
-function TweenController.Update()
-    local char = plr.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local rootPos = char.HumanoidRootPart.Position
+    local angle = math.random() * 2 * math.pi
+    local radius = math.random(10, DebugMode.SpawnRadius)
     
-    local HumanoidRootPart = char.HumanoidRootPart
-
-    if TweenInstance and CaculateDistance(HumanoidRootPart.Position) > 250 then
-        pcall(function()
-            TweenInstance:Cancel()
-        end)
-        TweenDebounce = true
-        task.wait(0.1)
-        TweenDebounce = false
-    end
-end
-
-function GetPortal(Position)
-    if not Portals or #Portals == 0 then return end
-    local Nearest, Current = 9e9, nil
-    local PlayerPos = plr.Character and plr.Character.HumanoidRootPart.Position
-
-    for _, Portal in ipairs(Portals) do
-        local Dist1 = CaculateDistance(Portal, Position)
-        if PlayerPos and Dist1 < (CaculateDistance(PlayerPos, Position) - 300) and Dist1 < Nearest then
-            Nearest = Dist1
-            Current = Portal
-        end
-    end
-
-    if Current and Remotes and Remotes:FindFirstChild("CommF_") then
-        Remotes.CommF_:InvokeServer("requestEntrance", Current)
-        return task.wait(0.5)
-    end
-end
-
-function GetEntries(Position)
-    local Nearest, Current = 9e9, nil
-    local PlayerPos = plr.Character and plr.Character.HumanoidRootPart.Position
-
-    for _, Entry in ipairs(Entries) do
-        local Dist1 = CaculateDistance(Entry, Position)
-        if PlayerPos and Dist1 < (CaculateDistance(PlayerPos, Position) - 700) and Dist1 < Nearest then
-            Nearest = Dist1
-            Current = Entry
-        end
-    end
-
-    if Current then
-        if os.time() - LastestTeleportToHomePoint > 30 then
-            LastestTeleportToHomePoint = os.time()
-            if Remotes and Remotes:FindFirstChild("CommF_") then
-                Remotes.CommF_:InvokeServer("GoHome")
-            end
-            task.wait(1)
-        end
-    end
-end
-
-function TweenController.Tween2(ePart, Position)
-    if not ePart then return end
-    local TargetCFrame = typeof(Position) == "Vector3" and CFrame.new(Position) or Position
-    
-    TweenInstance2 = Services.TweenService:Create(
-        ePart,
-        TweenInfo.new(CaculateDistance(ePart.Position, TargetCFrame.Position) / 50, Enum.EasingStyle.Linear),
-        { CFrame = TargetCFrame }
+    return Vector3.new(
+        rootPos.X + math.cos(angle) * radius,
+        rootPos.Y + math.random(5, 20),
+        rootPos.Z + math.sin(angle) * radius
     )
-    TweenInstance2:Play()
 end
 
-function TweenController.Create(Position)
-    if not Position or TweenDebounce then return end
+-- Tạo 1 trái cây giả
+local function createFakeFruit(name, position)
+    if not position then
+        position = getRandomPosition()
+    end
     
-    local Character = plr.Character
-    if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
-    local RootPart = Character.HumanoidRootPart
-
-    local TargetCFrame = typeof(Position) == "Vector3" and CFrame.new(Position) or Position
-
-    if TweenTargetPosition and (TargetCFrame.Position - TweenTargetPosition).Magnitude < 10 then 
-        return 
+    -- Tạo model trái cây
+    local fruit = Instance.new("Model")
+    fruit.Name = name or DebugMode.FruitNames[math.random(#DebugMode.FruitNames)]
+    
+    -- Tạo Handle (phần chính của trái cây)
+    local handle = Instance.new("Part")
+    handle.Name = "Handle"
+    handle.Size = Vector3.new(2, 2, 2)
+    handle.Shape = Enum.PartType.Ball
+    handle.Position = position
+    handle.Anchored = true
+    handle.CanCollide = false
+    handle.Transparency = 0.1
+    handle.Material = Enum.Material.Neon
+    
+    -- Tạo màu ngẫu nhiên
+    local color = Color3.fromHSV(math.random(), 0.8, 0.9)
+    handle.Color = color
+    handle.BrickColor = BrickColor.new(color)
+    
+    -- Thêm hiệu ứng glow
+    local glow = Instance.new("PointLight")
+    glow.Parent = handle
+    glow.Color = color
+    glow.Range = 15
+    glow.Brightness = 2
+    
+    -- Thêm ParticleEmitter để trông sống động hơn
+    local particles = Instance.new("ParticleEmitter")
+    particles.Parent = handle
+    particles.Texture = "rbxasset://textures/particles/particle_square_glow.png"
+    particles.Rate = 20
+    particles.Lifetime = NumberRange.new(1, 2)
+    particles.SpreadAngle = Vector2.new(360, 360)
+    particles.VelocityInheritance = 0
+    particles.Speed = NumberRange.new(1, 3)
+    particles.Rotation = NumberRange.new(0, 360)
+    particles.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    particles.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.5),
+        NumberSequenceKeypoint.new(1, 0.1)
+    })
+    particles.Color = ColorSequence.new(color)
+    
+    -- Tạo Attachment cho particles
+    local attachment = Instance.new("Attachment")
+    attachment.Parent = handle
+    
+    -- Thêm hiệu ứng xoay (dùng BodyGyro)
+    local gyro = Instance.new("BodyGyro")
+    gyro.Parent = handle
+    gyro.MaxTorque = Vector3.new(4000, 4000, 4000)
+    gyro.CFrame = CFrame.new(position) * CFrame.Angles(0, math.rad(45), 0)
+    
+    handle.Parent = fruit
+    
+    -- Thêm BillboardGui để hiển thị tên (cho debug)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Parent = handle
+    billboard.Size = UDim2.new(0, 200, 0, 30)
+    billboard.Adornee = handle
+    billboard.AlwaysOnTop = true
+    
+    local label = Instance.new("TextLabel")
+    label.Parent = billboard
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "FAKE: " .. fruit.Name
+    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    label.TextSize = 14
+    label.Font = Enum.Font.Bold
+    label.TextStrokeTransparency = 0.3
+    
+    -- Lưu vị trí để kiểm tra khoảng cách
+    fruit:SetAttribute("SpawnPosition", position)
+    fruit:SetAttribute("IsFake", true)
+    
+    fruit.Parent = workspace
+    
+    if DebugMode.ShowDebugLogs then
+        print("🍎 Đã tạo trái cây giả:", fruit.Name, "tại", position)
     end
-    TweenTargetPosition = TargetCFrame.Position
+    
+    return fruit
+end
 
-    if TweenInstance then
-        pcall(function()
-            TweenInstance:Cancel()
-        end)
+-- Tạo nhiều trái cây giả cùng lúc
+local function spawnFakeFruits(count)
+    local fruits = {}
+    count = count or DebugMode.FruitCount
+    
+    for i = 1, count do
+        local name = DebugMode.FruitNames[math.random(#DebugMode.FruitNames)]
+        local fruit = createFakeFruit(name .. " " .. i)
+        table.insert(fruits, fruit)
+        task.wait(0.1) -- Tránh spawn quá nhanh
     end
+    
+    if DebugMode.ShowDebugLogs then
+        print("✅ Đã tạo", count, "trái cây giả")
+    end
+    
+    return fruits
+end
 
-    for _, part in ipairs(Character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
+-- Xóa tất cả trái cây giả
+local function clearFakeFruits()
+    local count = 0
+    for _, item in ipairs(workspace:GetChildren()) do
+        if item:IsA("Model") and item:GetAttribute("IsFake") then
+            item:Destroy()
+            count = count + 1
         end
     end
-
-    local Head = Character:WaitForChild("Head", 2)
-    if Head and not Head:FindFirstChild("eltrul") then
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Name = "eltrul"
-        bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
-        bodyVelocity.Velocity = Vector3.zero
-        bodyVelocity.Parent = Head
+    
+    if DebugMode.ShowDebugLogs then
+        print("🗑️ Đã xóa", count, "trái cây giả")
     end
-
-    local Dist = CaculateDistance(RootPart.Position, TargetCFrame.Position)
-    if Dist > 500 then
-        if SeaIndex ~= 3 then
-            GetPortal(TargetCFrame)
-        end
-    end
-
-    Dist = CaculateDistance(RootPart.Position, TargetCFrame.Position)
-    local Speed = Dist < 18 and 25 or 350
-    local TweenTime = Dist / Speed
-
-    TweenInstance = Services.TweenService:Create(
-        RootPart,
-        TweenInfo.new(TweenTime, Enum.EasingStyle.Linear),
-        { CFrame = TargetCFrame }
-    )
-    TweenInstance:Play()
+    
+    return count
 end
 
 -- ==========================================
--- ESP TRÁI CÂY (Devil Fruit ESP)
+= TEST TWEEN CONTROLLER
 -- ==========================================
 
--- Hàm ESP chính (đã tối ưu)
-DevEsp = function()
-    -- Nếu ESP bị tắt, xóa tất cả ESP cũ
-    if not ESP_CONFIG.Enabled then
-        for I, e in next, workspace:GetChildren() do
-            pcall(function()
-                if string.find(e.Name, 'Fruit') and e:FindFirstChild("Handle") then
-                    if e.Handle:FindFirstChild('NameEsp' .. Number) then
-                        e.Handle:FindFirstChild('NameEsp' .. Number):Destroy()
-                    end
-                end
-            end)
-        end
+-- Test di chuyển đến trái cây
+local function testTweenToFruit(fruit)
+    if not fruit or not fruit:FindFirstChild("Handle") then
+        print("❌ Không tìm thấy trái cây để test")
         return
     end
-
-    -- Cập nhật ESP cho từng trái cây
-    for I, e in next, workspace:GetChildren() do
-        pcall(function()
-            if string.find(e.Name, 'Fruit') and e:FindFirstChild("Handle") then
-                local handle = e.Handle
-                
-                -- Nếu chưa có ESP, tạo mới
-                if not handle:FindFirstChild('NameEsp' .. Number) then
-                    local billboard = Instance.new('BillboardGui', handle)
-                    billboard.Name = 'NameEsp' .. Number
-                    billboard.ExtentsOffset = Vector3.new(0, 1.5, 0)
-                    billboard.Size = UDim2.new(1, 200, 1, 40)
-                    billboard.Adornee = handle
-                    billboard.AlwaysOnTop = true
-                    billboard.StudsOffset = Vector3.new(0, 3, 0)
-                    
-                    -- Background (tùy chọn)
-                    local background = Instance.new('Frame', billboard)
-                    background.Size = UDim2.new(1, 0, 1, 0)
-                    background.BackgroundTransparency = 0.5
-                    background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                    background.BorderSizePixel = 0
-                    
-                    local corner = Instance.new('UICorner', background)
-                    corner.CornerRadius = UDim.new(0, 5)
-                    
-                    -- TextLabel chính
-                    local textLabel = Instance.new('TextLabel', billboard)
-                    textLabel.Name = "TextLabel"
-                    textLabel.Font = ESP_CONFIG.Font
-                    textLabel.TextSize = ESP_CONFIG.TextSize
-                    textLabel.TextWrapped = true
-                    textLabel.Size = UDim2.new(1, 0, 1, 0)
-                    textLabel.TextYAlignment = 'Top'
-                    textLabel.BackgroundTransparency = 1
-                    textLabel.TextStrokeTransparency = 0.5
-                    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-                    textLabel.TextColor3 = ESP_CONFIG.Color
-                    
-                    -- Cập nhật text
-                    local distance = G5(CaculateDistance(plr.Character.Head.Position, handle.Position) / 3)
-                    local fruitName = string.gsub(e.Name, "Fruit", "")
-                    textLabel.Text = string.format(
-                        '[%s] %s\n%s%s',
-                        fruitName:upper(),
-                        ESP_CONFIG.ShowDistance and ('\n' .. distance .. ' M') or '',
-                        ESP_CONFIG.ShowDistance and '📍 ' or '',
-                        ESP_CONFIG.ShowDistance and '' or ''
-                    )
-                else
-                    -- Cập nhật ESP cũ
-                    local billboard = handle['NameEsp' .. Number]
-                    local textLabel = billboard:FindFirstChild("TextLabel")
-                    if textLabel then
-                        local distance = G5(CaculateDistance(plr.Character.Head.Position, handle.Position) / 3)
-                        local fruitName = string.gsub(e.Name, "Fruit", "")
-                        
-                        -- Cập nhật màu sắc dựa trên khoảng cách
-                        local color = ESP_CONFIG.Color
-                        if distance < 50 then
-                            color = Color3.fromRGB(0, 255, 0) -- Xanh lá (gần)
-                        elseif distance < 150 then
-                            color = Color3.fromRGB(255, 255, 0) -- Vàng (trung bình)
-                        else
-                            color = Color3.fromRGB(255, 100, 0) -- Cam (xa)
-                        end
-                        
-                        textLabel.TextColor3 = color
-                        textLabel.Text = string.format(
-                            '[%s] %s\n%s%s',
-                            fruitName:upper(),
-                            ESP_CONFIG.ShowDistance and ('\n' .. distance .. ' M') or '',
-                            ESP_CONFIG.ShowDistance and '📍 ' or '',
-                            ESP_CONFIG.ShowDistance and '' or ''
-                        )
-                    end
-                end
-            end
-        end)
-    end
-end
-
--- Hàm chạy ESP liên tục
-local function startDevilFruitESP()
+    
+    local position = fruit.Handle.Position
+    print("🚀 Đang bay đến trái cây:", fruit.Name, "tại", position)
+    
+    -- Sử dụng TweenController để bay đến
+    TweenController.Create(position + Vector3.new(0, 5, 0))
+    
+    -- Theo dõi quá trình di chuyển
     spawn(function()
-        while task.wait(ESP_CONFIG.UpdateInterval) do
-            if plr and plr.Character and plr.Character:FindFirstChild("Head") then
-                DevEsp()
-            end
-        end
-    end)
-end
-
--- Khởi động ESP
-startDevilFruitESP()
-
--- ==========================================
--- CHỨC NĂNG THU THẬP TRÁI CÂY (Tích hợp ESP)
--- ==========================================
-
--- Hàm thu thập trái cây (có hiển thị ESP)
-local function collectFruits(enable)
-    if not enable then return end
-    
-    local character = plr.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootCFrame = character.HumanoidRootPart.CFrame
-
-    for _, item in ipairs(workspace:GetChildren()) do
-        if string.find(item.Name, "Fruit") and item:FindFirstChild("Handle") then
-            pcall(function()
-                local fruitPosition = item.Handle.Position
-                
-                -- Hiển thị thông báo đang thu thập
-                if ESP_CONFIG.Enabled and item.Handle:FindFirstChild('NameEsp' .. Number) then
-                    local billboard = item.Handle['NameEsp' .. Number]
-                    local textLabel = billboard:FindFirstChild("TextLabel")
-                    if textLabel then
-                        textLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Màu xanh dương báo hiệu đang thu thập
-                        textLabel.Text = string.format('[COLLECTING]\n%s', item.Name)
-                    end
-                end
-                
-                -- Bay đến trái cây
-                if CaculateDistance(rootCFrame.Position, fruitPosition) > 20 then
-                    print("Đang bay đến trái cây:", item.Name)
-                    TweenController.Create(fruitPosition + Vector3.new(0, 5, 0))
-                    
-                    repeat
-                        task.wait(0.1)
-                        local currentPos = character.HumanoidRootPart.Position
-                        if CaculateDistance(currentPos, fruitPosition) < 15 then
-                            break
-                        end
-                    until false
-                end
-                
-                -- Thu thập
-                item.Handle.CFrame = rootCFrame
-                print("Đã thu thập:", item.Name)
-                
-                -- Xóa ESP sau khi thu thập
-                if item.Handle:FindFirstChild('NameEsp' .. Number) then
-                    item.Handle:FindFirstChild('NameEsp' .. Number):Destroy()
-                end
-            end)
-        end
-    end
-end
-
--- Hàm thu thập trái cây gần nhất
-local function collectNearestFruit(enable)
-    if not enable then return end
-    
-    local character = plr.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPosition = character.HumanoidRootPart.Position
-    local nearestFruit = nil
-    local nearestDistance = math.huge
-    
-    for _, item in ipairs(workspace:GetChildren()) do
-        if string.find(item.Name, "Fruit") and item:FindFirstChild("Handle") then
-            local distance = CaculateDistance(rootPosition, item.Handle.Position)
-            if distance < nearestDistance then
-                nearestDistance = distance
-                nearestFruit = item
-            end
-        end
-    end
-    
-    if nearestFruit then
-        pcall(function()
-            local fruitPosition = nearestFruit.Handle.Position
+        local startTime = tick()
+        local char = game.Players.LocalPlayer.Character
+        if not char then return end
+        
+        while char and char:FindFirstChild("HumanoidRootPart") do
+            local currentPos = char.HumanoidRootPart.Position
+            local distance = CaculateDistance(currentPos, position)
             
-            -- Đánh dấu trái cây đang được thu thập trên ESP
-            if ESP_CONFIG.Enabled and nearestFruit.Handle:FindFirstChild('NameEsp' .. Number) then
-                local billboard = nearestFruit.Handle['NameEsp' .. Number]
-                local textLabel = billboard:FindFirstChild("TextLabel")
-                if textLabel then
-                    textLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-                    textLabel.Text = '[COLLECTING]\n' .. nearestFruit.Name
-                end
+            if distance < 10 then
+                print("✅ Đã đến gần trái cây! Khoảng cách:", distance)
+                break
             end
             
-            if nearestDistance > 20 then
-                print("Đang bay đến trái cây gần nhất:", nearestFruit.Name, "Khoảng cách:", nearestDistance)
-                TweenController.Create(fruitPosition + Vector3.new(0, 5, 0))
-                
-                repeat
-                    task.wait(0.1)
-                    local currentPos = character.HumanoidRootPart.Position
-                    if CaculateDistance(currentPos, fruitPosition) < 15 then
-                        break
-                    end
-                until false
+            if tick() - startTime > 30 then
+                print("⚠️ Timeout! Không thể đến gần trái cây")
+                break
             end
             
-            nearestFruit.Handle.CFrame = character.HumanoidRootPart.CFrame
-            print("Đã thu thập trái cây gần nhất:", nearestFruit.Name)
-            
-            -- Xóa ESP
-            if nearestFruit.Handle:FindFirstChild('NameEsp' .. Number) then
-                nearestFruit.Handle:FindFirstChild('NameEsp' .. Number):Destroy()
-            end
-        end)
-    end
-end
-
--- Hàm tự động thu thập (chạy nền)
-local function autoCollectFruits()
-    spawn(function()
-        while task.wait(1) do
-            if not plr.Character or not plr.Character:FindFirstChild("Humanoid") or plr.Character.Humanoid.Health <= 0 then
-                continue
-            end
-            
-            local collected = false
-            for _, item in ipairs(workspace:GetChildren()) do
-                if string.find(item.Name, "Fruit") and item:FindFirstChild("Handle") then
-                    if not item:IsDescendantOf(plr.Character) and not item:IsDescendantOf(plr.Backpack) then
-                        collectNearestFruit(true)
-                        collected = true
-                        break
-                    end
-                end
-            end
-            
-            if not collected then
-                task.wait(2)
-            end
+            task.wait(0.5)
         end
     end)
 end
 
 -- ==========================================
--- KHỞI TẠO VÀ CHẠY
+-- DEBUG MODE - TỰ ĐỘNG TEST
 -- ==========================================
 
--- Khởi động auto collect
-autoCollectFruits()
+local debugFruits = {}
+local isDebugRunning = false
 
--- ==========================================
--- LỆNH ĐIỀU KHIỂN (Dùng trong console)
--- ==========================================
-
--- Bật/Tắt ESP
-_G.ToggleESP = function(state)
-    ESP_CONFIG.Enabled = state
-    DevilFruitESP = state
-    print("ESP đã " .. (state and "bật" or "tắt"))
+-- Hàm chạy Debug Mode
+local function startDebugMode()
+    if isDebugRunning then
+        print("⚠️ Debug Mode đã đang chạy!")
+        return
+    end
+    
+    isDebugRunning = true
+    DebugMode.Enabled = true
+    
+    print("═══════════════════════════════════════")
+    print("  🐞 DEBUG MODE - TEST TWEEN & ESP 🐞")
+    print("═══════════════════════════════════════")
+    
+    -- Xóa trái cây cũ nếu có
+    clearFakeFruits()
+    
+    -- Spawn trái cây giả
+    debugFruits = spawnFakeFruits(DebugMode.FruitCount)
+    
+    -- Test TweenController đến trái cây đầu tiên
+    task.wait(1)
+    if #debugFruits > 0 then
+        testTweenToFruit(debugFruits[1])
+    end
+    
+    -- Tự động spawn lại khi thu thập hết
+    if DebugMode.AutoSpawn then
+        spawn(function()
+            while isDebugRunning and DebugMode.Enabled do
+                task.wait(DebugMode.SpawnInterval)
+                
+                -- Kiểm tra số lượng trái cây còn lại
+                local remaining = 0
+                for _, fruit in ipairs(debugFruits) do
+                    if fruit and fruit.Parent then
+                        remaining = remaining + 1
+                    end
+                end
+                
+                -- Nếu hết hoặc ít hơn 1, spawn lại
+                if remaining < 1 then
+                    if DebugMode.ShowDebugLogs then
+                        print("🔄 Spawn lại trái cây giả...")
+                    end
+                    clearFakeFruits()
+                    debugFruits = spawnFakeFruits(DebugMode.FruitCount)
+                    
+                    -- Test Tween đến trái cây mới
+                    task.wait(1)
+                    if #debugFruits > 0 then
+                        testTweenToFruit(debugFruits[1])
+                    end
+                end
+            end
+        end)
+    end
+    
+    print("═══════════════════════════════════════")
+    print("  📋 Lệnh Debug:")
+    print("    - DebugMode.Enabled = false (Tắt)")
+    print("    - spawnFakeFruits(10) (Tạo 10 trái)")
+    print("    - clearFakeFruits() (Xóa hết)")
+    print("    - testTweenToFruit(fruit) (Test Tween)")
+    print("═══════════════════════════════════════")
 end
 
--- Bật/Tắt Auto Collect
-_G.ToggleAutoCollect = function(state)
-    if state then
-        autoCollectFruits()
-        print("Auto Collect đã bật")
+-- Hàm dừng Debug Mode
+local function stopDebugMode()
+    isDebugRunning = false
+    DebugMode.Enabled = false
+    clearFakeFruits()
+    print("🐞 Debug Mode đã dừng")
+end
+
+-- ==========================================
+-- DEBUG COMMANDS (Sử dụng trong console)
+-- ==========================================
+
+-- Tạo trái cây giả ở vị trí ngẫu nhiên
+_G.SpawnFakeFruit = function(name)
+    local fruit = createFakeFruit(name or "Test Fruit")
+    print("✅ Đã tạo trái cây giả:", fruit.Name)
+    return fruit
+end
+
+-- Tạo nhiều trái cây giả
+_G.SpawnFakeFruits = function(count)
+    return spawnFakeFruits(count or 5)
+end
+
+-- Xóa tất cả trái cây giả
+_G.ClearFakeFruits = function()
+    return clearFakeFruits()
+end
+
+-- Test Tween đến trái cây
+_G.TestTween = function(fruit)
+    if not fruit then
+        -- Tìm trái cây gần nhất
+        local nearest = nil
+        local minDist = math.huge
+        for _, item in ipairs(workspace:GetChildren()) do
+            if item:IsA("Model") and item:FindFirstChild("Handle") then
+                if string.find(item.Name, "Fruit") then
+                    local dist = CaculateDistance(item.Handle.Position)
+                    if dist < minDist then
+                        minDist = dist
+                        nearest = item
+                    end
+                end
+            end
+        end
+        fruit = nearest
+    end
+    
+    if fruit then
+        testTweenToFruit(fruit)
     else
-        print("Auto Collect đã tắt (không thể tắt hoàn toàn, vui lòng restart script)")
+        print("❌ Không tìm thấy trái cây nào!")
     end
 end
 
--- Thu thập ngay lập tức
-_G.CollectNow = function()
-    collectNearestFruit(true)
-end
-
--- Xóa tất cả ESP
-_G.ClearESP = function()
-    for I, e in next, workspace:GetChildren() do
-        pcall(function()
-            if string.find(e.Name, 'Fruit') and e:FindFirstChild("Handle") then
-                if e.Handle:FindFirstChild('NameEsp' .. Number) then
-                    e.Handle:FindFirstChild('NameEsp' .. Number):Destroy()
-                end
-            end
-        end)
+-- Test ESP bằng cách tạo trái cây và xem ESP
+_G.TestESP = function()
+    print("🎯 Testing ESP...")
+    
+    -- Xóa trái cây cũ
+    clearFakeFruits()
+    
+    -- Tạo 3 trái cây ở các vị trí khác nhau
+    local positions = {
+        Vector3.new(0, 10, 30),
+        Vector3.new(-20, 10, -20),
+        Vector3.new(30, 10, 0),
+    }
+    
+    for i, pos in ipairs(positions) do
+        local fruit = createFakeFruit("Test Fruit " .. i, pos + game.Players.LocalPlayer.Character.HumanoidRootPart.Position)
+        print("✅ Tạo trái cây test tại:", pos)
     end
-    print("Đã xóa tất cả ESP")
+    
+    print("📌 Kiểm tra ESP trong 5 giây...")
+    task.wait(5)
+    print("✅ ESP Test hoàn tất!")
 end
 
+-- Debug Mode: Tự động chạy test
+_G.StartDebug = function()
+    startDebugMode()
+end
+
+_G.StopDebug = function()
+    stopDebugMode()
+end
+
+-- ==========================================
+-- AUTO START DEBUG (Tùy chọn)
+-- ==========================================
+
+-- Tự động chạy Debug Mode khi script load
+-- Bỏ comment dòng dưới để tự động chạy
+-- startDebugMode()
+
+-- ==========================================
+-- KHỞI TẠO VÀ TEST NHANH
+-- ==========================================
+
 print("═══════════════════════════════════════")
-print("  🍎 DEVIL FRUIT COLLECTOR + ESP 🍎  ")
+print("  🐞 DEBUG MODE LOADED SUCCESSFULLY 🐞")
 print("═══════════════════════════════════════")
-print("  ✅ Auto Collect: Đang chạy")
-print("  ✅ ESP: " .. (ESP_CONFIG.Enabled and "Đang bật" or "Đã tắt"))
-print("  📋 Lệnh điều khiển:")
-print("    - _G.ToggleESP(true/false)")
-print("    - _G.CollectNow()")
-print("    - _G.ClearESP()")
+print("  📋 Các lệnh có sẵn:")
+print("    - _G.StartDebug() - Chạy Debug Mode")
+print("    - _G.StopDebug() - Dừng Debug Mode")
+print("    - _G.SpawnFakeFruit('Tên') - Tạo 1 trái")
+print("    - _G.SpawnFakeFruits(10) - Tạo nhiều trái")
+print("    - _G.ClearFakeFruits() - Xóa tất cả")
+print("    - _G.TestTween() - Test Tween đến trái gần nhất")
+print("    - _G.TestESP() - Test ESP")
 print("═══════════════════════════════════════")
+
+-- Nếu muốn tự động test ngay khi load
+if DebugMode.AutoSpawn then
+    task.wait(2)
+    _G.StartDebug()
+end
