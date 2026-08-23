@@ -4,8 +4,8 @@
 -- ==========================================
 
 local DebugMode = {
-    Enabled = false,           -- Bật/Tắt Debug Mode
-    SpawnRadius = 10000,          -- Bán kính spawn trái cây xung quanh player
+    Enabled = true,           -- Bật/Tắt Debug Mode
+    SpawnRadius = 5000,          -- Bán kính spawn trái cây xung quanh player
     FruitCount = 5,            -- Số lượng trái cây giả tạo ra
     AutoSpawn = true,          -- Tự động spawn lại khi thu thập hết
     SpawnInterval = 3,         -- Thời gian giữa các lần spawn (giây)
