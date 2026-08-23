@@ -87,7 +87,7 @@ end
 
 local DebugMode = {
     Enabled = true,
-    SpawnRadius = 5000,
+    SpawnRadius = 5001,
     FruitCount = 1,
     AutoSpawn = true,
     SpawnInterval = 3,
