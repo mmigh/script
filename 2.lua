@@ -678,13 +678,12 @@ pcall(function()
     FunctionsHandler.AutoRaidIce:Register()
 
     -- ============================================================
-    -- [9] STORE FRUIT & CHECK BACKPACK LOGIC - FIXED
+    -- [9] STORE FRUIT & CHECK BACKPACK LOGIC - FIXED CACHE
     -- ============================================================
-    -- Cache system
+    -- Cache system - CHỈ LƯU SAU KHI HOÀN TẤT THAO TÁC
     local FruitCache = {
         mapFruits = {},
         mapFruitsCount = 0,
-        mapFruitsLastCheck = 0,
         backpackFruits = {},
         backpackFruitsCount = 0,
         hasChip = false,
@@ -692,31 +691,79 @@ pcall(function()
         triedStore = false,
         hasStoredFruit = false,
         boughtChip = false,
-        lastCheckTime = 0,
-        checkInterval = 0.3,
+        lastUpdateTime = 0,
+        cacheValid = false, -- Cache chỉ có hiệu lực khi được cập nhật xong
         sessionId = os.time() .. "_" .. tostring(math.random(1000, 9999)),
-        isCollecting = false -- Ngăn chặn collect nhiều lần
+        isProcessing = false
     }
 
-    local function InvalidateCache()
-        FruitCache.mapFruits = {}
-        FruitCache.mapFruitsCount = 0
-        FruitCache.mapFruitsLastCheck = 0
-        FruitCache.backpackFruits = {}
-        FruitCache.backpackFruitsCount = 0
-        FruitCache.hasChip = false
-        FruitCache.hasFruit = false
-        FruitCache.hasStoredFruit = false
-        FruitCache.triedStore = false
-        FruitCache.boughtChip = false
-        FruitCache.lastCheckTime = 0
-        FruitCache.isCollecting = false
-        print("[CACHE] 🗑️ Cache invalidated - Session: " .. FruitCache.sessionId)
+    -- HÀM CẬP NHẬT CACHE - GỌI SAU KHI HOÀN TẤT MỌI THAO TÁC
+    local function UpdateCache()
+        if FruitCache.isProcessing then return end
+        FruitCache.isProcessing = true
+        
+        pcall(function()
+            -- Lấy dữ liệu thực tế
+            local mapFruits = {}
+            for _, child in ipairs(Workspace:GetChildren()) do
+                if (child:IsA("Tool") or child:IsA("Model")) and string.find(child.Name, "Fruit") then
+                    local handle = child:FindFirstChild("Handle")
+                    if handle and handle.Parent then
+                        table.insert(mapFruits, child)
+                    end
+                end
+            end
+            
+            local backpackFruits = {}
+            local containers = {LocalPlayer:FindFirstChild("Backpack"), LocalPlayer.Character}
+            for _, container in ipairs(containers) do
+                if container then
+                    for _, tool in ipairs(container:GetChildren()) do
+                        if tool:IsA("Tool") and string.find(tool.Name, "Fruit") then
+                            table.insert(backpackFruits, tool)
+                        end
+                    end
+                end
+            end
+            
+            local hasChip = false
+            pcall(function()
+                local char = LocalPlayer.Character
+                local bp = LocalPlayer:FindFirstChild("Backpack")
+                if char and char:FindFirstChild("Special Microchip") then hasChip = true end
+                if bp and bp:FindFirstChild("Special Microchip") then hasChip = true end
+            end)
+            
+            -- LƯU VÀO CACHE
+            FruitCache.mapFruits = mapFruits
+            FruitCache.mapFruitsCount = #mapFruits
+            FruitCache.backpackFruits = backpackFruits
+            FruitCache.backpackFruitsCount = #backpackFruits
+            FruitCache.hasFruit = #backpackFruits > 0
+            FruitCache.hasChip = hasChip
+            FruitCache.lastUpdateTime = os.time()
+            FruitCache.cacheValid = true
+        end)
+        
+        FruitCache.isProcessing = false
     end
 
-    Player.CharacterAdded:Connect(InvalidateCache)
+    -- HÀM LẤY DỮ LIỆU TỪ CACHE - CHỈ TRẢ VỀ NẾU CACHE VALID
+    local function GetCachedData()
+        if not FruitCache.cacheValid then
+            UpdateCache()
+        end
+        return {
+            mapFruits = FruitCache.mapFruits,
+            mapCount = FruitCache.mapFruitsCount,
+            backpackCount = FruitCache.backpackFruitsCount,
+            hasFruit = FruitCache.hasFruit,
+            hasChip = FruitCache.hasChip,
+            cacheValid = FruitCache.cacheValid
+        }
+    end
 
-    -- HÀM LẤY FRUIT TRÊN MAP - KHÔNG CACHE QUÁ LÂU
+    -- HÀM LẤY FRUIT TRÊN MAP - LUÔN LẤY THỰC TẾ KHI CẦN
     local function GetMapFruitsReal()
         local fruits = {}
         for _, child in ipairs(Workspace:GetChildren()) do
@@ -730,25 +777,7 @@ pcall(function()
         return fruits
     end
 
-    local function GetMapFruitsCached()
-        local now = os.time()
-        -- Cache chỉ có hiệu lực 0.3s
-        if now - FruitCache.mapFruitsLastCheck < FruitCache.checkInterval then
-            return FruitCache.mapFruits
-        end
-        
-        FruitCache.mapFruits = GetMapFruitsReal()
-        FruitCache.mapFruitsCount = #FruitCache.mapFruits
-        FruitCache.mapFruitsLastCheck = now
-        return FruitCache.mapFruits
-    end
-
-    local function GetMapFruitsCountCached()
-        GetMapFruitsCached()
-        return FruitCache.mapFruitsCount
-    end
-
-    -- HÀM LẤY FRUIT TRONG BACKPACK
+    -- HÀM LẤY FRUIT TRONG BACKPACK - LUÔN LẤY THỰC TẾ
     local function GetBackpackFruitsReal()
         local fruits = {}
         local containers = {LocalPlayer:FindFirstChild("Backpack"), LocalPlayer.Character}
@@ -764,40 +793,6 @@ pcall(function()
         return fruits
     end
 
-    local function CheckBackpackFruitsCached()
-        local now = os.time()
-        if now - FruitCache.lastCheckTime < FruitCache.checkInterval then
-            return FruitCache.hasFruit, FruitCache.backpackFruitsCount
-        end
-        
-        local fruits = GetBackpackFruitsReal()
-        FruitCache.backpackFruits = fruits
-        FruitCache.backpackFruitsCount = #fruits
-        FruitCache.hasFruit = #fruits > 0
-        FruitCache.lastCheckTime = now
-        return FruitCache.hasFruit, #fruits
-    end
-
-    -- HÀM KIỂM TRA CHIP
-    local function CheckChipCached()
-        local now = os.time()
-        if now - FruitCache.lastCheckTime < FruitCache.checkInterval then
-            return FruitCache.hasChip
-        end
-        
-        local hasChip = false
-        pcall(function()
-            local char = LocalPlayer.Character
-            local bp = LocalPlayer:FindFirstChild("Backpack")
-            if char and char:FindFirstChild("Special Microchip") then hasChip = true end
-            if bp and bp:FindFirstChild("Special Microchip") then hasChip = true end
-        end)
-        FruitCache.hasChip = hasChip
-        FruitCache.lastCheckTime = now
-        return hasChip
-    end
-
-    -- HÀM STORE FRUIT
     local function StoreFruit(serverName)
         for _, container in ipairs({LocalPlayer:FindFirstChild("Backpack"), LocalPlayer.Character}) do
             if container then
@@ -808,7 +803,7 @@ pcall(function()
                         end
                         FruitCache.triedStore = true
                         FruitCache.hasStoredFruit = true
-                        InvalidateCache()
+                        FruitCache.cacheValid = false -- Đánh dấu cache không valid
                         return true
                     end
                 end
@@ -831,28 +826,22 @@ pcall(function()
                 end
             end
         end
+        if stored then
+            FruitCache.cacheValid = false
+        end
         return stored
     end
 
-    -- LẤY FULL STATUS
-    local function CheckFullStatus()
-        local hasFruit, fruitCount = CheckBackpackFruitsCached()
-        local hasChip = CheckChipCached()
-        local mapCount = GetMapFruitsCountCached()
-        
-        return {
-            hasFruit = hasFruit,
-            fruitCount = fruitCount,
-            hasChip = hasChip,
-            mapFruits = mapCount,
-            triedStore = FruitCache.triedStore,
-            hasStored = FruitCache.hasStoredFruit,
-            boughtChip = FruitCache.boughtChip,
-            inRaid = Raid:InRaid(),
-            canStartRaid = (hasFruit or hasChip) and not Raid:InRaid(),
-            shouldHop = mapCount == 0 and not hasFruit and not hasChip and not Raid:InRaid(),
-            isCollecting = FruitCache.isCollecting
-        }
+    -- HÀM KIỂM TRA CHIP THỰC TẾ
+    local function CheckChipReal()
+        local hasChip = false
+        pcall(function()
+            local char = LocalPlayer.Character
+            local bp = LocalPlayer:FindFirstChild("Backpack")
+            if char and char:FindFirstChild("Special Microchip") then hasChip = true end
+            if bp and bp:FindFirstChild("Special Microchip") then hasChip = true end
+        end)
+        return hasChip
     end
 
     -- ============================================================
@@ -1041,7 +1030,6 @@ pcall(function()
         while true do
             if Config.ESPFruit then
                 pcall(function()
-                    -- Lấy fruit thực tế, không dùng cache
                     for _, fruit in ipairs(GetMapFruitsReal()) do
                         SpawnFruitESP(fruit)
                     end
@@ -1065,19 +1053,21 @@ pcall(function()
             return false
         end
         
-        local mapCount = GetMapFruitsCountCached()
-        if mapCount > 0 then
-            _G.SetText("DebugLine", "Fruits on Map: " .. mapCount)
+        -- Lấy dữ liệu thực tế để kiểm tra
+        local mapFruits = GetMapFruitsReal()
+        local backpackFruits = GetBackpackFruitsReal()
+        local hasChip = CheckChipReal()
+        
+        if #mapFruits > 0 then
+            _G.SetText("DebugLine", "Fruits on Map: " .. #mapFruits)
             return false
         end
         
-        local hasFruit, fruitCount = CheckBackpackFruitsCached()
-        if hasFruit then
-            _G.SetText("DebugLine", "Fruits in Backpack: " .. fruitCount)
+        if #backpackFruits > 0 then
+            _G.SetText("DebugLine", "Fruits in Backpack: " .. #backpackFruits)
             return false
         end
         
-        local hasChip = CheckChipCached()
         if hasChip then
             _G.SetText("DebugLine", "Chip found - Quick check...")
             return true
@@ -1142,7 +1132,7 @@ pcall(function()
                             task.wait()
                             
                             isHopping = false
-                            InvalidateCache()
+                            FruitCache.cacheValid = false
                             _G.SetText("MainTask", "Hopped successfully!")
                             return
                         end
@@ -1188,11 +1178,11 @@ pcall(function()
     local lastRaidStart = 0
 
     function Raid:CheckBackpackChipOnce()
-        return CheckChipCached()
+        return CheckChipReal()
     end
 
     function Raid:HasChip()
-        return CheckChipCached()
+        return CheckChipReal()
     end
 
     function Raid:InRaid()
@@ -1327,7 +1317,7 @@ pcall(function()
                 end)
                 BoughtChipForCurrentRaid = true
                 FruitCache.boughtChip = true
-                InvalidateCache()
+                FruitCache.cacheValid = false
                 task.wait(1)
             end
             hasChip = self:CheckBackpackChipOnce()
@@ -1346,7 +1336,7 @@ pcall(function()
             fireclickdetector(btn)
             self.IslandIdx   = 1
             self.StartIsland = nil
-            InvalidateCache()
+            FruitCache.cacheValid = false
             task.wait(2)
             raidInProgress = false
             return true
@@ -1364,10 +1354,12 @@ pcall(function()
     end
 
     -- ============================================================
-    -- [13] MAIN WORKFLOW LOOP - FIXED COLLECT LOGIC
+    -- [13] MAIN WORKFLOW LOOP - FIXED WITH CACHE AFTER COMPLETE
     -- ============================================================
     task.spawn(function()
         local lastBuy = 0
+        local lastCacheUpdate = 0
+        local cacheUpdateInterval = 0.5
 
         while task.wait(0.15) do
             if isHopping then continue end
@@ -1375,15 +1367,13 @@ pcall(function()
             pcall(function()
                 AutoBuso()
 
-                -- Lấy fruit trên map REAL, không dùng cache để tránh bỏ sót
+                -- Lấy fruit trên map REAL
                 local fruitsOnMap = GetMapFruitsReal()
                 
                 -- ƯU TIÊN 1: NHẶT TẤT CẢ FRUITS TRÊN MAP
                 if #fruitsOnMap > 0 then
-                    -- Đánh dấu đang collect để ngăn chặn nhiều luồng
-                    FruitCache.isCollecting = true
                     PosMon = nil
-                    _G.SetText("MainTask", "🍎 Collecting Fruits...")
+                    _G.SetText("MainTask", "Collecting Fruits...")
                     _G.SetText("SubTask", "Found " .. #fruitsOnMap .. " fruits")
                     
                     for _, fruit in ipairs(fruitsOnMap) do
@@ -1405,24 +1395,34 @@ pcall(function()
                             
                             -- Store fruit vào kho
                             AutoStoreAllFruits()
-                            InvalidateCache()
+                            
+                            -- CẬP NHẬT CACHE SAU KHI HOÀN TẤT NHẶT
+                            FruitCache.cacheValid = false
+                            UpdateCache()
                         end
                     end
-                    
-                    FruitCache.isCollecting = false
                     return
                 end
-                
-                FruitCache.isCollecting = false
+
+                -- Cập nhật cache định kỳ nếu chưa valid
+                if not FruitCache.cacheValid or os.time() - lastCacheUpdate > cacheUpdateInterval then
+                    UpdateCache()
+                    lastCacheUpdate = os.time()
+                end
+
+                -- Lấy dữ liệu từ cache đã được cập nhật
+                local cached = GetCachedData()
+                local hasFruit = cached.hasFruit
+                local hasChip = cached.hasChip
+                local backpackCount = cached.backpackCount
+                local mapCount = cached.mapCount
 
                 -- ƯU TIÊN 2: Kiểm tra Backpack & Auto Raid
-                local status = CheckFullStatus()
-                
                 if Config.AutoRaid then
                     if Raid:InRaid() then
                         BoughtChipForCurrentRaid = false
                         FruitCache.boughtChip = false
-                        _G.SetText("MainTask", "⚔️ RAID IN PROGRESS")
+                        _G.SetText("MainTask", "RAID IN PROGRESS")
                         _G.SetText("SubTask", "Fighting enemies...")
 
                         local isl, mob = Raid:GetTarget()
@@ -1449,18 +1449,19 @@ pcall(function()
                         LastTweenPos     = nil
 
                         -- Nếu có chip HOẶC có fruit trong backpack
-                        if status.hasChip or status.hasFruit then
+                        if hasChip or hasFruit then
                             if os.time() - lastBuy > 10 then
                                 lastBuy = os.time()
-                                _G.SetText("MainTask", "⏳ Starting Raid...")
-                                _G.SetText("SubTask", status.hasChip and "Using Chip" or "Using Fruit (" .. status.fruitCount .. ")")
+                                _G.SetText("MainTask", "Starting Raid...")
+                                _G.SetText("SubTask", hasChip and "Using Chip" or "Using Fruit (" .. backpackCount .. ")")
                                 
-                                local success = Raid:Start(status.hasFruit)
+                                local success = Raid:Start(hasFruit)
                                 if success then
-                                    _G.SetText("SubTask", "✅ Raid started!")
-                                    InvalidateCache()
+                                    _G.SetText("SubTask", "Raid started!")
+                                    FruitCache.cacheValid = false
+                                    UpdateCache()
                                 else
-                                    _G.SetText("SubTask", "❌ Raid failed - retrying...")
+                                    _G.SetText("SubTask", "Raid failed - retrying...")
                                 end
                             end
                             return
@@ -1468,19 +1469,19 @@ pcall(function()
                     end
                 end
 
-                -- ƯU TIÊN 3: Hop Server
-                if not status.hasFruit and not status.hasChip and status.mapFruits == 0 and not status.inRaid then
+                -- ƯU TIÊN 3: Hop Server - CHỈ KHI KHÔNG CÓ GÌ
+                if mapCount == 0 and not hasFruit and not hasChip and not Raid:InRaid() then
                     if os.time() - hopCooldown > 5 then
                         hopCooldown = os.time()
-                        _G.SetText("MainTask", "🔄 Checking Server...")
+                        _G.SetText("MainTask", "Checking Server...")
                         _G.SetText("SubTask", "No fruits - Hopping...")
                         
                         if CanHopServer() then
                             isHopping = true
-                            _G.SetText("MainTask", "🌐 Hopping Server...")
+                            _G.SetText("MainTask", "Hopping Server...")
                             ServerFunc:NormalTeleport()
                         else
-                            _G.SetText("MainTask", "⏳ Waiting...")
+                            _G.SetText("MainTask", "Waiting...")
                             _G.SetText("SubTask", "Conditions not met")
                         end
                     end
@@ -1615,7 +1616,7 @@ pcall(function()
         local LiveTimeLabel = createTextLabel("00:00:00", UDim2.new(0.5, 0, 0.565, 0), 15, Color3.fromRGB(255, 200, 150))
         Interface.Instances.LiveTime = LiveTimeLabel
 
-        local CurrenciesLabel = createTextLabel("Map: 0 | Chip: No", UDim2.new(0.5, 0, 0.62, 0), 15, Color3.fromRGB(150, 255, 150))
+        local CurrenciesLabel = createTextLabel("Map: 0 | Backpack: 0 | Chip: No", UDim2.new(0.5, 0, 0.62, 0), 15, Color3.fromRGB(150, 255, 150))
         Interface.Instances.Currencies = CurrenciesLabel
 
         -- Blur
@@ -1663,8 +1664,7 @@ pcall(function()
                     label.TextTransparency = 0
                 end
                 blurEffect.Enabled = true
-                blurEffect.Size = 12
-            else
+                blurEffect.Size = 12            else
                 ToggleIcon.Text = "🔍"
                 for _, label in pairs(labels) do
                     label.TextTransparency = 1
@@ -1689,7 +1689,7 @@ pcall(function()
     print("✅ GUI Loaded Successfully!")
 
     -- ============================================================
-    -- [15] GUI UPDATE LOOP
+    -- [15] GUI UPDATE LOOP - SỬ DỤNG CACHE ĐÃ CẬP NHẬT
     -- ============================================================
     task.spawn(function()
         local startTime = os.time()
@@ -1702,11 +1702,10 @@ pcall(function()
                 local seconds = elapsed % 60
                 GUI.SetText("LiveTime", string.format("%02d:%02d:%02d", hours, minutes, seconds))
                 
-                -- Lấy thông tin REAL để hiển thị chính xác
-                local fruitCount = #GetMapFruitsReal()
-                local backpackFruits = GetBackpackFruitsReal()
-                local hasChip = CheckChipCached()
-                GUI.SetText("Currencies", "Map: " .. fruitCount .. " | Backpack: " .. #backpackFruits .. " | Chip: " .. (hasChip and "Yes" or "No"))
+                -- Cập nhật cache trước khi hiển thị
+                UpdateCache()
+                local cached = GetCachedData()
+                GUI.SetText("Currencies", "Map: " .. cached.mapCount .. " | Backpack: " .. cached.backpackCount .. " | Chip: " .. (cached.hasChip and "Yes" or "No"))
             end)
         end
     end)
@@ -1714,7 +1713,8 @@ pcall(function()
     print("╔══════════════════════════════════════════════════════╗")
     print("║  ✅  UNIFIED SYSTEM WITH GUI — COMPLETE              ║")
     print("║  Auto Buso · Fast Attack · Smart Hop · Auto Raid     ║")
-    print("║  ✅ FIXED: Fruit Collection & Cache Logic            ║")
+    print("║  ✅ FIXED: Cache after complete operations           ║")
+    print("║  ✅ FIXED: Auto Raid after collecting fruit          ║")
     print("║  ✅ Session: " .. FruitCache.sessionId .. "          ║")
     print("╚══════════════════════════════════════════════════════╝")
 end)
