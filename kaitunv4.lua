@@ -510,15 +510,23 @@ end
 
 local Statusmoon = {
     ["http://www.roblox.com/asset/?id=9709149431"] = "100%",
-    ["rbxassetid://9709149431"] = "100%"
+    ["http://www.roblox.com/asset/?id=9709149052"] = "75%",
+    ["http://www.roblox.com/asset/?id=9709143733"] = "50%",
+    ["http://www.roblox.com/asset/?id=9709150401"] = "25%",
+    ["http://www.roblox.com/asset/?id=9709149680"] = "15%",
+    ["rbxassetid://9709149431"] = "100%",
+    ["rbxassetid://9709149052"] = "75%",
+    ["rbxassetid://9709143733"] = "50%",
+    ["rbxassetid://9709150401"] = "25%",
+    ["rbxassetid://9709149680"] = "15%"
 }
 
 local function isfullmoon()
-    local sky = Lighting:FindFirstChildOfClass("Sky") or Lighting:FindFirstChild("Sky")
+    local sky = game:GetService("Lighting"):FindFirstChildOfClass("Sky") or game:GetService("Lighting"):FindFirstChild("Sky")
     if not sky or not sky.MoonTextureId or sky.MoonTextureId == "" then 
-        return "0%" 
+        return false 
     end
-    return Statusmoon[sky.MoonTextureId] or "0%"
+    return Statusmoon[sky.MoonTextureId] == "100%"
 end
 
 module:noclip([[return true]])
