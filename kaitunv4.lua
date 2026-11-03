@@ -508,8 +508,25 @@ function isnight()
     return c >= 16 or c < 5
 end
 
-function isfullmoon()
-    return game:GetService("Lighting"):GetAttribute("MoonPhase") == 5
+local Statusmoon = {
+    ["http://www.roblox.com/asset/?id=9709149431"] = "100%",
+    ["http://www.roblox.com/asset/?id=9709149052"] = "75%",
+    ["http://www.roblox.com/asset/?id=9709143733"] = "50%",
+    ["http://www.roblox.com/asset/?id=9709150401"] = "25%",
+    ["http://www.roblox.com/asset/?id=9709149680"] = "15%",
+    ["rbxassetid://9709149431"] = "100%",
+    ["rbxassetid://9709149052"] = "75%",
+    ["rbxassetid://9709143733"] = "50%",
+    ["rbxassetid://9709150401"] = "25%",
+    ["rbxassetid://9709149680"] = "15%"
+}
+
+local function isfullmoon()
+    local sky = Lighting:FindFirstChildOfClass("Sky") or Lighting:FindFirstChild("Sky")
+    if not sky or not sky.MoonTextureId or sky.MoonTextureId == "" then 
+        return "0%" 
+    end
+    return Statusmoon[sky.MoonTextureId] or "0%"
 end
 
 module:noclip([[return true]])
