@@ -510,15 +510,7 @@ end
 
 local Statusmoon = {
     ["http://www.roblox.com/asset/?id=9709149431"] = "100%",
-    ["http://www.roblox.com/asset/?id=9709149052"] = "75%",
-    ["http://www.roblox.com/asset/?id=9709143733"] = "50%",
-    ["http://www.roblox.com/asset/?id=9709150401"] = "25%",
-    ["http://www.roblox.com/asset/?id=9709149680"] = "15%",
-    ["rbxassetid://9709149431"] = "100%",
-    ["rbxassetid://9709149052"] = "75%",
-    ["rbxassetid://9709143733"] = "50%",
-    ["rbxassetid://9709150401"] = "25%",
-    ["rbxassetid://9709149680"] = "15%"
+    ["rbxassetid://9709149431"] = "100%"
 }
 
 local function isfullmoon()
