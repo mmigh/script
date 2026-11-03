@@ -45,7 +45,7 @@ end
 getgenv().Mode1 = getgenv().Mode1 or {
     {
         name    = "QH5IfJnTBR2O",
-        helpers = {"1PTsh155cyg0", "an4WILVaOjqZ",},
+        helpers = {"Gn9ZV78YKQFw", "an4WILVaOjqZ",},
         hopfm   = {"QH5IfJnTBR2O"},
     },
 }
